@@ -5,92 +5,91 @@ import { CreateUserParams, UpdateUserParams } from "@/types";
 import { connectToDatabase } from "../mongodb/database";
 import User from "../mongodb/database/models/user.model";
 import Order from "../mongodb/database/models/order.model";
-import Event from "../mongodb/database/models/event.model"
+import Event from "../mongodb/database/models/event.model";
 import { handleError } from "../utils";
 import { revalidatePath } from "next/cache";
-
 
 // This function creates a new user in the database
 export const createUser = async (user: CreateUserParams) => {
     try {
-        await connectToDatabase(); // connect to the database
+        await connectToDatabase();
 
-        // create a new user once connected to the data base
-        const newUser = await User.create(user);
+        // For Mongoose 8.x, be explicit with the create method
+        const newUser = await User.create([user]);
 
-        return JSON.parse(JSON.stringify(newUser)); // This is the JSON user object passed to the frontend
+        return JSON.parse(JSON.stringify(newUser[0]));
 
     } catch (error) {
-        // using a customised error handling function located in the utils file in lib
-        handleError(error)
+        handleError(error);
     } 
 }
 
-// THIS FUNCTION GETS USER ID
+// THIS FUNCTION GETS USER ID  
 export async function getUserById(userId: string) {
     try {
-        await connectToDatabase()
+        await connectToDatabase();
 
-        const user = await User.findById(userId)
+        // Use exec() for better type inference in Mongoose 8.x
+        const user = await User.findById(userId).exec();
 
-        if(!user) throw new Error('User not find')
+        if (!user) throw new Error('User not found');
         
-        return JSON.parse(JSON.stringify(user))
+        return JSON.parse(JSON.stringify(user));
     } catch (error) {
-        handleError(error)
-        
+        handleError(error);
     }
 }
 
 // THIS FUNCTION UPDATES THE USER
 export async function updateUser(clerkId: string, user: UpdateUserParams) {
     try {
-        await connectToDatabase()
+        await connectToDatabase();
 
-        const updatedUser = await User.findOneAndUpdate({ clerkId }, user, { new: true })
-        if(!updatedUser) throw new Error('User upadte failed')
-
-        return JSON.parse(JSON.stringify(updatedUser))
-    } catch (error) {
-        handleError(error)
+        const updatedUser = await User.findOneAndUpdate(
+            { clerkId }, 
+            user, 
+            { new: true }
+        ).exec();
         
+        if (!updatedUser) throw new Error('User update failed');
+
+        return JSON.parse(JSON.stringify(updatedUser));
+    } catch (error) {
+        handleError(error);
     }
 }
 
 // THIS FUNCTION DELETES THE USER BY ID
 export async function deleteUser(clerkId: string) {
     try {
-        await connectToDatabase()
+        await connectToDatabase();
 
-        // find the user to delete by clerkId
+        const userToDelete = await User.findOne({ clerkId }).exec();
 
-        const userToDelete = await User.findOne({ clerkId })
-
-        if(!userToDelete) throw new Error('User not found')
+        if (!userToDelete) throw new Error('User not found');
 
         // unlink relationships
         await Promise.all([
             // update the 'events' collection to remove references to the user
             Event.updateMany(
-                { _id: { $in: userToDelete.events } },
-                { $pull: { organizer: userToDelete._id } },
-            ),
+                { _id: { $in: userToDelete.events || [] } },
+                { $pull: { organizer: userToDelete._id } }
+            ).exec(),
 
             // update the 'orders' collection to remove references to the user
             Order.updateMany(
-                { _id: { $in: userToDelete.orders } },
+                { _id: { $in: userToDelete.orders || [] } },
                 { $unset: { buyer: 1 } }
-            )
-        ])
+            ).exec()
+        ]);
 
         // delete the user
-        const deletedUser = await User.findByIdAndDelete(userToDelete._id)
-        revalidatePath('/')
+        const deletedUser = await User.findByIdAndDelete(userToDelete._id).exec();
+        revalidatePath('/');
 
         return deletedUser ? JSON.parse(JSON.stringify(deletedUser)) : null;
 
     } catch (error) {
-        handleError(error)
-        
+        handleError(error);
     }
 }
