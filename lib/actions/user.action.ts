@@ -15,9 +15,9 @@ export const createUser = async (user: CreateUserParams) => {
         await connectToDatabase();
 
         // For Mongoose 8.x, be explicit with the create method
-        const newUser = await User.create([user]);
+        const newUser = await User.create(user);
 
-        return JSON.parse(JSON.stringify(newUser[0]));
+        return JSON.parse(JSON.stringify(newUser));
 
     } catch (error) {
         handleError(error);
